@@ -1,0 +1,501 @@
+---
+title: "Lottery Predictions using Bayes Theorem"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(gridExtra)
+```
+
+## Summary
+
+The whole idea behind Bayes Theorem is to update prior beliefs based on new evidence, in generate probabilities which represent of our new degree of belief.
+
+In context of the lottery, we had prior beliefs that each ball drawn was fair (so probabilities came from a uniform distribution). Using over 1500 observations from past draws, we used this as evidence to update our prior degree of belief.
+
+If the lottery was truly fair, we expect the Bayesian models to perform similarly to a random model  (uniform distribution).
+
+An important aspect of Bayes Theorem is the likelihood function. This function controls how much we change our prior degree of belief. It is important this function is representative of the data-generating process to ensure valid statistical inference.
+
+- Binomial: For each ball, each number is or is not drawn -- Several trials of two outcomes for each ball number; the Binomial function can be appropriate.
+
+- Observed Proportions: For each ball, each number has a certain frequency of occurring -- Convert this frequency to a proportion and we have the exact probability of each ball number from the past -- If this exact behaviour was the true underlying distribution, observed proportions could be appropriate.
+
+- Inverse Proportions: This is the inverse of observed frequencies
+
+For the Bayesian models, it was assumed that evidence gathered for the likelihood function was INDEPENDENT from the previous balls drawn (NOT RESTRICTED to specific past observations).
+
+Predictions are generated from random sampling based on posterior probabilities. This was chosen to give all balls a chance at being selected, just like in a real lottery.
+
+After much testing for each model:
+
+- Bayes with Inverse Proportion as the likelihood performed the best on average with an accuracy of 2.66% (2 d.p.) PER LINE. However, a lack of disparity in accuracy between models means these results could just be due to randomness.
+
+- Proportion, Invert Proportion, Proportion, and Invert Proportion models performed best at predicting Balls 1, 2, 3, and 4 respectively.
+
+- Bayes with Invert Proportions was the most consistent model.
+
+#### At the end of the day, winning Lotto/Strike is a just a very unlikely coincidence!
+
+## Setup & Data Cleaning
+```{r echo=F}
+# Read-in data
+data = read_xlsx("official-lotto-results.xlsx", skip=5) # latest draws
+# Data Info
+summary(data)
+# Note: if NA in data, would show  in column summary
+```
+
+The latest six draws:
+
+```{r echo=F}
+# Clean the data
+clean_df = function(df) {
+  df %>%
+    rename(`Date` = `Draw Date`, `7` = `Bonus Ball`, `PB` = `Power Ball`) %>%
+    mutate(
+      `Date` = as.Date(`Date`, format = "%A %d %B %Y"), # convert to date
+      `2nd Bonus Ball` = NULL, # remove column
+    ) %>%
+    mutate(across(where(is.double) & !where(is.Date), as.integer)) # convert doubles to integer
+  
+  # Note: PB contains some NA (didn't exist until later)
+}
+lotto = clean_df(data)
+head(lotto)
+# write.csv(lotto, "./LotteryApp/data/lotto_clean.csv", row.names=F)
+```
+
+## Data Exploration
+```{r echo=F}
+# Plot functions
+line_dot_plot = function(df, xvar, yvar) {
+  df %>%
+    ggplot(aes(x=!!sym(xvar), y=!!sym(yvar))) +
+    geom_point() + geom_line() +
+    geom_smooth() + theme_minimal()
+}
+
+prob_bar_plot = function(df, xvar, p) {
+  df %>%
+    ggplot(aes(x=!!sym(xvar))) +
+    geom_bar(aes(y=after_stat(count / sum(count)))) +
+    geom_hline(yintercept=p, color="red", linewidth=1) +
+    labs(y="Probability")
+}
+```
+
+#### Ball 1
+```{r echo=F}
+line_dot_plot(lotto, "Draw", "1")
+```
+
+There appears to be a period of time when the number drawn for Ball 1 was unusually low. It is best we avoid these values to reduce any biases.
+
+```{r echo=F}
+lotto %>%
+  filter(`Draw` > 600) %>%
+  line_dot_plot("Draw", "1")
+```
+
+Better. There doesn't appear to be any unusual patterns. An expected value (mean) of close to 20 over time indicates that the distribution may be uniform (E[X] = (N+1)/2 where N is the number of items). In a uniform distribution, all N items have the same probability of occurring (p = 1/N = 1/40 (2.5%)).
+
+```{r echo=F}
+lotto %>%
+  filter(`Draw` > 600) %>%
+  prob_bar_plot("1", p=1/40)
+```
+
+All values have close to a 1/40 probability of occurring. The reason some values occur more than others may simply be due to the 'roll of the dice' i.e. randomness.
+
+#### Other Balls BEFORE filtering
+```{r echo=F}
+# Graphs for Ball 2-6
+for (i in 2:6) {
+  p = 1/(41-i)
+  i = as.character(i)
+  p1 = line_dot_plot(lotto, "Draw", i)
+  p2 = prob_bar_plot(lotto, i, p)
+  grid.arrange(p1, p2, ncol=2)
+}
+```
+
+Update the dataset accordingly.
+
+```{r}
+lotto = lotto %>% filter(`Draw` > 600)
+```
+
+#### Other Balls AFTER filtering
+
+```{r echo=F}
+# Graphs for Ball 2-6
+for (i in 2:6) {
+  p = 1/(41-i)
+  i = as.character(i)
+  p1 = line_dot_plot(lotto, "Draw", i)
+  p2 = prob_bar_plot(lotto, i, p)
+  grid.arrange(p1, p2, ncol=2)
+}
+```
+
+## Model Building
+
+Assuming the Lottery is fair, each number for the first ball has a 1/40 (2.5%) chance of being selected. But we saw earlier there may be some evidence that some numbers occur more often that others.
+
+### Model Choice: Bayes Theorem
+
+I am using a Bayesian model. With this new information, we can update prior beliefs that the lottery is fair, with what we observe.
+
+If what we observe is fair, then our new (posterior) probabilities should not deviate too far than expected. Otherwise, posterior probabilities should tend towards balls which are more likely to occur.
+
+### Example - Bayes Theorem for the First Ball:
+
+#### Hypothesis and Prior (P(H))
+
+Aim: Determine the probability of each ball number being drawn first.
+
+Assuming the lottery is fair, each ball should have a 1/40 probability of occurring. This will be our prior belief for the first ball drawn: P(H) = 1/40 (2.5%).
+
+#### Evidence
+
+We have a history about all balls drawn in the lotto. This is our evidence to update prior beliefs.
+
+```{r echo=F}
+ball1_freq = table(lotto$`1`) # counts
+ball1_prop = prop.table(ball1_freq) # counts as a proportion
+ball1_prop
+```
+
+Each probability represent how often each ball number occurs for the first ball drawn.
+
+#### Likelihood (P(E|H))
+
+The likelihood function plays a critical role in generating posterior probabilities. It is important the function chosen is representative of how our data is collected.
+
+- Binomial Probability Function
+  - Each lotto draw is an independent trial.
+  - Each ball number has a binary outcome: it does or doesn't occur.
+  - So when drawing the 1st (or any) ball, we have multiple Bernoulli outcomes for each ball number --> Binomial probability function is appropriate.
+
+- Observed Proportions
+  - Each ball number occupies a certain proportion of our observed frequencies.
+  - Observed proportions represent the exact probability of each ball number occurring to date --> Observed proportions can be appropriate.
+
+- Inverse Proportions
+  - Similar to observed proportions, instead take the inverse probability of each ball number.
+  - Balls which occur more frequently are given less weight; Balls which occur less frequently are given more weight.
+  - Idea: If the lottery is truly fair, then these probabilities should be adjusted to converge toward the expected value (e.g. 1/40 for the first ball).
+  
+For example, we implement the Binomial probability function where K := observed frequency for each number, p := 1/40, and N := number of different draws.
+
+```{r}
+# Likelihood of EACH first ball (using binomial probability formula)
+n = length(lotto$`1`) # number of trials
+k = ball1_freq # number of successes (from n trials)
+prior = 1/40 # assuming fair
+likelihood = choose(n, k) * (prior)^k * (1 - prior)^(n-k) # P(E|H)
+likelihood
+```
+
+#### Posterior (P(H\|E))
+
+Now, scale the values produced from the likelihood function to represent our new probabilities for each ball number.
+
+```{r}
+# posterior probabilities (using Bayes Theorem)
+posterior = (prior * likelihood) / sum(prior * likelihood)
+# Note: sum(likelihood) is literally P(E) := probability of our evidence -- without this we would have our proportion
+posterior
+```
+
+Visualising the posterior probabilities:
+
+```{r echo=F}
+# visualise posterior probabilities
+data.frame("Post"=posterior, "Prop"=ball1_prop) %>%
+  select(c(2,4)) %>%
+  rename("Posterior"="Post.Freq", "Proportion"="Prop.Freq") %>%
+  ggplot(aes(x=1:40, y=`Proportion`)) +
+  geom_col(fill="black", alpha=0.2) + # observed proportions
+  geom_col(aes(y=`Posterior`), fill="blue", alpha=0.2) + # posterior
+  geom_hline(yintercept=1/40, color="red") +
+  labs(y="Probability", x="Ball 1")
+```
+
+#### Predictions
+
+Because the Lotto is still random in nature, I feel it's best to randomly select the first ball using probabilities from the posterior. This way all balls have a chance of being selected, just like in the lottery.
+
+## Generalising the Bayes Theorem Process
+
+The following code generalises the Bayes Theorem process so that it works with Balls 1 to 6. It also accounts for (1) independence between balls drawn, and (2) different likelihood functions. In addition, there is the option for sampling from a Uniform distribution.
+
+#### Note: this method is conditional on past observations (ordering matters) -- Best for Strike; Doable for Lotto (but there are better methods)
+
+```{r}
+##### Bayes Theorem #####
+prepare_df = function(df, ball_i, prev, drawNo, restrict=F) {
+  train = df %>% filter(`Draw` < drawNo) # Key - learn on past
+  if (restrict == F) { ### NOT RESTRICT ONLY TO PAST SEQUENCE
+    if (ball_i == 6) {
+      train = train %>%
+        filter(!(`6` %in% prev)) %>%
+        pull(`6`)
+    } else if (ball_i == 5) {
+      train = train %>%
+        filter(!(`5` %in% prev)) %>%
+        pull(`5`)
+    } else if (ball_i == 4) {
+      train = train %>%
+        filter(!(`4` %in% prev)) %>%
+        pull(`4`)
+    } else if (ball_i == 3) {
+      train = train %>%
+        filter(!(`3` %in% prev)) %>%
+        pull(`3`)
+    } else if (ball_i == 2) {
+      train = train %>%
+        filter(!(`2` %in% prev)) %>%
+        pull(`2`)
+    } else { # ball_i == 1
+      train = train %>% pull(`1`)
+    }
+    return(train)
+  } 
+  else { ### RESTRICT ONLY TO PAST SEQUENCES
+    if (!is.null(prev)) {
+      for (i in seq(along=prev)) {
+        train = train %>%
+          filter(!!sym(as.character(i)) == prev[i])
+      }
+    }
+    train = train %>% pull(!!sym(as.character(ball_i)))
+    return(train)
+  }
+}
+get_evidence = function(nums, prev) {
+  ball_freq = table(nums) # observed counts
+  counts = numeric(40)
+  names(counts) = 1:40
+  if (length(ball_freq) > 0) {counts[names(ball_freq)] = ball_freq} # have past observations
+  counts = counts + 1 # add-one smoothing (with no observations, becomes uniform sampling)
+  if (!is.null(prev)) {counts = counts[-prev]} # remove previous balls
+  return(counts) # add-one count of balls
+}
+
+bayes_pred = function(drawNo, ball_i, prev=NULL, ll="binom", restrict=F) {
+  ### Prepare dataset for Bayes
+  train = prepare_df(df=lotto, ball_i=ball_i, prev=prev, restrict=restrict, drawNo=drawNo)
+  prior = 1/(41 - ball_i)
+  
+  ### Evidence
+  counts = get_evidence(train, prev)
+  ball_prop = prop.table(counts) # count as proportions
+  
+  ### Likelihood
+  n = sum(counts) # number of trials - adjusted due to add-one smoothing
+  # Note: because we add-one, the number of trials needs to be adjusted
+  k = counts # number of successes (of n trials)
+  likelihood = NULL
+  if (ll == "prop") {
+    likelihood = ball_prop
+  } else if (ll == "invert.prop") {
+    likelihood = (1-ball_prop)/sum((1-ball_prop))
+  } else {
+    likelihood = choose(n, k) * (prior)^k * (1 - prior)^(n-k)
+  } # P(E|H)
+
+  ### Posterior
+  posterior = (prior * likelihood) / sum(prior * likelihood)
+  
+  ### Predictions
+  balls = 1:40
+  if (!is.null(prev)) {balls = balls[-prev]}
+  return(sample(balls, size=1, prob=posterior)) # returns 1 ball
+}
+```
+
+```{r}
+# One line of predictions using Bayes
+bayes_line = function(drawNo, N=4, ll="binom", restrict=F) {
+  balls = numeric(N)
+  for (j in 1:N) {
+    if (j == 1) {
+      balls[j] = bayes_pred(drawNo=drawNo, ball_i=j, ll=ll, restrict=restrict)
+    } else {
+      balls[j] = bayes_pred(drawNo=drawNo, ball_i=j, prev=balls[1:j], ll=ll, restrict=restrict)
+    }
+  }
+  return(balls)
+}
+
+# One line of predictions using Uniform sampling
+rand_line = function(N=4) {sample(1:40, size=N)}
+```
+
+## Posterior Distributions
+
+Using the latest draw, sample repeatedly to get an idea of how each model behaves.
+
+```{r warning=F}
+nTimes = 2000
+temp_draws = rep(max(lotto$`Draw`), nTimes)
+
+prop_bayes = lapply(temp_draws, bayes_line, N=6, ll="prop", restrict=F)
+prop_bayes_2282 = do.call(rbind, prop_bayes) %>% as_tibble()
+#
+invert_prop_bayes = lapply(temp_draws, bayes_line, N=6, ll="invert.prop", restrict=F)
+invert_prop_bayes_2282 = do.call(rbind, invert_prop_bayes) %>% as_tibble()
+#
+binom_bayes = lapply(temp_draws, bayes_line, N=6, ll="binom", restrict=F)
+binom_bayes_2282 = do.call(rbind, binom_bayes) %>% as_tibble()
+#
+rand_preds_2282 = replicate(nTimes, {rand_line(N=6)}) %>%
+  t() %>% as_tibble()
+```
+
+Visualing predictions for each ball drawn:
+
+```{r echo=F}
+prob_bar_plot2 = function(df, col_name, ball_i, title="") {
+  df %>%
+    ggplot(aes(x=!!sym(col_name))) +
+    geom_bar(aes(y=after_stat(count / sum(count)))) +
+    geom_hline(yintercept=1/(41-ball_i), color="red", linewidth=1) +
+    labs(y="Probability", title=title, x=paste0("Ball ", ball_i))
+}
+
+for (i in 1:6) {
+  col_name = paste0("V", i)
+  p1 = prob_bar_plot2(prop_bayes_2282, col_name, i, title="Proportion")
+  p2 = prob_bar_plot2(invert_prop_bayes_2282, col_name, i, title="Invert Proportion")
+  p3 = prob_bar_plot2(binom_bayes_2282, col_name, i, title="Binomial")
+  p4 = prob_bar_plot2(rand_preds_2282, col_name, i, title="Random")
+  grid.arrange(p1, p2, p3, p4, ncol=2, nrow=2)
+}
+```
+
+Note: Better convergence when sampling 10,000 times. However due to time constraints, sampling 2000 gives us a decent idea of how each probability model performs.
+
+## Model Performance
+
+Going forward, when using a Bayesian model I do NOT assume independence between the balls drawn (i.e. do not restrict to only past sequences). Reason being that there are few cases when drawing balls later on and we basically end up sampling from a uniform distribution. Since we already have a uniform model, this behaviour should already be captured.
+
+### Accuracy Measures
+
+When measuring accuracy, it depends on the lottery mode played. In Strike, the order matters so we can measure both the line accuracy and ball column accuracy. In Lotto, the order does not matter, so line accuracy is the only measure.
+
+Each model's predictive accuracy is measured by using (1) the latest 100 draws (emphasis on recent draws), and (2) 100 predictions (lines) per draw.
+
+```{r}
+# Function for producing predictions
+predsOneDraw = function(drawNo, nTimes=10, nBalls=4) {
+  prop_bayes = replicate(nTimes, {bayes_line(drawNo, N=nBalls, ll="prop", restrict=F)}) %>%
+    t() %>% as_tibble() %>%
+    mutate("Model"="Prop", "Draw"=drawNo)
+  invert_prop_bayes = replicate(nTimes, {bayes_line(drawNo, N=nBalls, ll="invert.prop", restrict=F)}) %>%
+    t() %>% as_tibble() %>%
+    mutate("Model"="InvertProp", "Draw"=drawNo)
+  binom_bayes = replicate(nTimes, {bayes_line(drawNo, N=nBalls, ll="binom", restrict=F)}) %>%
+    t() %>% as_tibble() %>%
+    mutate("Model"="Binom", "Draw"=drawNo)
+  rand_preds = replicate(nTimes, {rand_line(N=nBalls)}) %>%
+    t() %>% as_tibble() %>%
+    mutate("Model"="Uniform", "Draw"=drawNo)
+  return(bind_rows(prop_bayes, invert_prop_bayes, binom_bayes, rand_preds)) # dataframe of all model predictions for one draw
+}
+```
+
+```{r}
+# Last 100 draws
+maxDraw = max(lotto$Draw)
+minDraw = maxDraw - 100
+predDraws = seq(minDraw, maxDraw)
+
+# Get predictions
+set.seed(123)
+all_preds_df = lapply(predDraws, predsOneDraw, nTimes=100, nBalls=4) %>%
+  bind_rows()
+
+# Prepare predictions dataframe
+all_preds = all_preds_df %>%
+  inner_join(lotto[,c("Draw","1","2","3","4")], by="Draw") %>%
+  mutate(
+    "Correct 1" = `V1` == `1`,
+    "Correct 2" = `V2` == `2`,
+    "Correct 3" = `V3` == `3`,
+    "Correct 4" = `V4` == `4`
+  )
+```
+
+#### Accuracy per Line
+
+```{r}
+# Per Line Accuracy
+all_preds %>%
+  group_by(`Model`) %>%
+  rowwise() %>%
+  reframe(
+    "% Balls Correct" = sum(`Correct 1`, `Correct 2`, `Correct 3`, `Correct 4`)/4
+  ) %>%
+  group_by(`Model`) %>%
+  reframe("Line Accuracy" = mean(`% Balls Correct`)*100)
+```
+
+Of the 10,000 predictions made by each model, Bayes with Inverse Proportion as the likelihood performed the best on average with an accuracy of 2.66% (2 d.p.). Because there is not a major disparity in accuracy between models, these results could be attributed to randomness
+
+#### Accuracy per Ball Order
+
+```{r}
+# Per Ball Order Accuracy
+all_preds %>%
+  group_by(`Model`) %>%
+  reframe(
+    "% Correct 1" = mean(`Correct 1`)*100,
+    "% Correct 2" = mean(`Correct 2`)*100,
+    "% Correct 3" = mean(`Correct 3`)*100,
+    "% Correct 4" = mean(`Correct 4`)*100,
+  ) %>%
+  rowwise() %>%
+  mutate(
+    "Average" = mean(c(`% Correct 1`,`% Correct 2`,`% Correct 3`,`% Correct 4`)),
+    "Variance" = var(c(`% Correct 1`,`% Correct 2`,`% Correct 3`,`% Correct 4`))
+  )
+```
+
+- Proportion, Invert Proportion, Proportion, and Invert Proportion models performed best at predicting Balls 1, 2, 3, and 4 respectively.
+- On average, Bayes with Invert Proportions only very slightly edged out Bayes with Proportion and the Uniform model.
+- Bayes with Invert Proportion was the most consistent.
+
+Since there isn't major disparity in accuracy between models, these results may be attributed to randomness.
+
+## Conclusion
+
+All models performed similarly well in my testing. Bayes with Invert Proportion very slightly edged out other models with its predictive accuracy. However the resulting differences could be explained as randomness/luck of the draw.
+
+Ultimately, using Bayes Theorem to adjust prior beliefs about the Lotto did not produce as much improvement as I'd hoped. At the end of the day, winning the Lotto/Strike is a just a very unlikely coincidence!
+
+## Future Improvements
+
+1. Method of generating predictions: Sample many times then take the ball number with the highest probability.
+
+- Pros:
+  - Eliminates some randomness
+
+- Cons: 
+  - Possibly overfits to one number (happens more often in a biased model)
+  - Time consuming to generate predictions
+
+2. Introduce cross validation in model training:
+- To generate posterior probabilities, we currently learn from all draws BEFORE the given draw.
+  - Assumes a sequence in the data.
+- To create a more robust model, introduce cross-validation in the model training phase.
+
+3. Undertake a more in-depth process to creating a Bayesian model (if necessary).
+- This analysis is designed to understand the core principle of Bayes Theorem.
+- There is a whole subsection of statistics dedicated to Bayesian statistics. Eventually, I'd like to undertake this process to improve this analysis.
+
