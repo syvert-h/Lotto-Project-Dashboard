@@ -1,15 +1,8 @@
 library(DT)
 library(dplyr)
 library(ggplot2)
-# library(data.table) # for faster file reading
 
 function(input, output, session) {
-  # read dataframe
-  # lotto = fread("./data/lotto_clean.csv", sep=",",
-  #               colClasses=c("integer","character", rep("integer",8))
-  # )
-  lotto = load_data()
-  
   ### RESULTS PAGE ###
   output$results_table = DT::renderDataTable({lotto}, rownames=FALSE)
   
@@ -36,41 +29,58 @@ function(input, output, session) {
     }
   })
   # Store active dataframe for prediction
-  rng_preds_df = reactiveVal(
-    data.frame("1"=integer(0),  "2"=integer(0), "3"=integer(0), "4"=integer(0), 
-               "5"=integer(0), "6"=integer(0), "PB"=integer(0), "Model"=character(0), 
-               "Restrict"=logical(0), "Method"=character(0), "All Data"=logical(0),
-               check.names=F)
-  )
+  rng_preds_df = reactiveVal(rng_df_default)
   
   # Fill dataframe with predictions
   observeEvent(input$rng_button, {
-    line = character(9)
+    line = character(11)
+    line[1] = input$rng_mode
+    ### Select relevant columns before predictions
+    nBalls = NULL
+    current_df = NULL
+    if (input$rng_mode == 'Strike') {
+      nBalls = 4
+      current_df = rng_df() %>% select(c(1, 3:6)) %>%
+        filter(`Draw` < input$rng_drawNo) %>% select(-`Draw`)
+    } else { # input$rng_mode == 'Lotto'
+      nBalls = 6
+      current_df = rng_df() %>% select(c(1, 3:8, 10)) %>%
+        filter(`Draw` < input$rng_drawNo) %>% select(-`Draw`)
+    }
+    ### Make predictions
     preds = NULL
-    if (input$rng_method == "random") {
+    if (input$rng_method == "single") {
       if (input$rng_model == "rng") { # Uniform/Random Model
-        preds = rand_line()
+        preds = sample(1:40, size=nBalls)
+        if (input$rng_pb == T & input$rng_mode == 'Lotto') {preds = c(preds, sample(1:10, size=1))}
       } else { # Bayes Model
-        preds = bayes_line(df=rng_df(), drawNo=input$rng_drawNo, N=6, ll=input$rng_model, restrict=input$rng_indep)
+        temp_df = current_df[,!(names(current_df) %in% c("PB"))] # remove PB column for Bayes preds
+        preds = bayes_line(df=temp_df, nBalls=nBalls, pb=F, ll=input$rng_model)
+        if (input$rng_pb == T & input$rng_mode == 'Lotto') {
+          pb_pred = bayes_line(df=current_df['PB'], nBalls=1, pb=T, ll=input$rng_model)
+          preds = c(preds, pb_pred)
+        }
       }
-    } else { # Method == "most.common"
+    } 
+    else { # input$rng_method == "most.common"
+      nTimes = 1000 # 1000 > 100 in order for better convergence
       if (input$rng_model == "rng") {
-        preds = most_common_random(nTimes=1000, N=6)
+        preds = most_common_balls(nTimes=nTimes, nBalls=nBalls, df=NULL, pb=input$rng_pb, ll=NULL)
       } else { # bayes
-        preds = most_common_bayes(nTimes=1000, df=rng_df(), drawNo=input$rng_drawNo, N=6, ll=input$rng_model, restrict=input$rng_indep)
+        preds = most_common_balls(nTimes=nTimes, nBalls=nBalls, df=current_df, pb=input$rng_pb, ll=input$rng_model)
       }
     }
-    for (i in seq_along(preds)) {line[i] = preds[i]}
-    line[7] = NA
-    if (input$rng_pb == TRUE) {line[7] = sample(1:10, size=1)}
+    ### Store predictions
+    for (i in 1:nBalls) {line[i+1] = preds[i]} # store predictions
+    if (input$rng_pb == T) {line[8] = preds[7]}
+    ### Store process information
     convert_model = c("prop"="Proportion (Bayes)", "invert.prop"="Inverse Proportion (Bayes)", 
                       "binom"="Binomial (Bayes)", "rng"="Uniform (Random)")
-    convert_method = c("most.common"="Most Common", "random"="RNG")
-    line[8] = convert_model[input$rng_model]
-    line[9] = input$rng_indep
+    convert_method = c("most.common"="Most Common", "single"="Singular")
+    line[9] = convert_model[input$rng_model]
     line[10] = convert_method[input$rng_method]
     line[11] = input$rng_filter
-
+    ### Update predictions dataframe with new row
     before = rng_preds_df()
     before[nrow(before)+1,] = line
     rng_preds_df(before)
@@ -81,12 +91,7 @@ function(input, output, session) {
   }, options=list(bFilter=FALSE))
   # Reset dataframe of predictions
   observeEvent(input$rng_reset, {
-    rng_preds_df(
-      data.frame("1"=integer(0),  "2"=integer(0), "3"=integer(0), "4"=integer(0), 
-                 "5"=integer(0), "6"=integer(0), "PB"=integer(0), "Model"=character(0), 
-                 "Restrict"=logical(0), "Method"=character(0), "All Data"=logical(0),
-                 check.names=F)
-    )
+    rng_preds_df(rng_df_default)
   })
   
   ### ANALYSIS PAGE ###
@@ -121,21 +126,23 @@ function(input, output, session) {
       geom_point() + geom_line() + geom_smooth() +
       labs(x="Draw", y="Ball Number", title="Lastest 100 Draws") +
       theme_minimal()
-    ggplotly(p) %>% toWebGL()
+    ggplotly(p)
   })
   # Probability bar plot of each ball number
   output$odds_prob_bar = renderPlotly({
     convert = c("1"=1, "2"=2, "3"=3, "4"=4, "5"=5, "6"=6, "7"=7, "PB"=31)
     fair = 1/(41 - convert[input$odds_no])
-    p = odds_df() %>%
-      ggplot(aes(x=!!sym(input$odds_no))) +
-      geom_bar(aes(y=after_stat(count / sum(count)), 
-                   text=sprintf("Probability: %.5f", after_stat(count/sum(count))))
-               ) +
+    probs = odds_df() %>% pull(!!sym(input$odds_no)) %>% table() %>% prop.table()
+    probs_df = data.frame("Ball Number"=as.numeric(names(probs)), "Probability"=probs, check.names=F)[,c(1,3)]
+    colnames(probs_df) = c("Ball Number", "Probability")
+    p = probs_df %>%
+      ggplot(aes(x=`Ball Number`, y=`Probability`)) +
+      geom_bar(stat="identity") +
       geom_hline(yintercept=fair, color="red", linewidth=1) +
-      labs(y="Probability", x="Ball Number", title="Probability per Ball Number") +
-      theme_minimal()
-    ggplotly(p, tooltip=c("x", "text"))
+      labs(title="Probability per Ball Number") +
+      theme_minimal() + # theme_minimal() must be before theme() to apply changes
+      theme(axis.text.x = element_text(angle=90))
+    ggplotly(p, tooltip=c("x", "y"))
   })
   # Summary table (means, variance, median, quartiles, etc.) -- maybe boxplot?
   output$odds_summary_table = DT::renderDataTable({
@@ -167,6 +174,6 @@ function(input, output, session) {
       theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
       labs(x="", y="Ball Number", title="Ball Number (Percentile) Distribution") +
       theme_minimal()
-    ggplotly(p) %>% toWebGL()
+    ggplotly(p)
   })
 }

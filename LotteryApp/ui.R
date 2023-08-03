@@ -4,7 +4,6 @@ library(plotly)
 navbarPage(
   title="Lottery Analysis",
   id="navPage",
-  # theme = bs_theme(bootswatch="materia"), # error with generating plots
   
   tabPanel(
     title="Odds Information",
@@ -60,6 +59,11 @@ navbarPage(
           value=2000
         ),
         radioButtons(
+          "rng_mode",
+          label="Which game mode?",
+          choices=list("Strike", "Lotto")
+        ),
+        radioButtons(
           "rng_filter",
           label="Use all the data?",
           choices=list("No (Recommended)"=FALSE, "Yes"=TRUE)
@@ -67,7 +71,7 @@ navbarPage(
         radioButtons(
           "rng_method",
           label="Prediction Method:",
-          choices=list("Random"="random", "Most Likely (Slower)"="most.common")
+          choices=list("Singular"="single", "Most Likely (Slower)"="most.common")
         ),
         radioButtons(
           "rng_model",
@@ -75,15 +79,13 @@ navbarPage(
           choices=list("Proportion (Bayes)"="prop", "Inverse Proportion (Bayes)"="invert.prop", 
                        "Binomial (Bayes)"="binom", "Uniform (Random)"="rng")
         ),
-        radioButtons(
-          "rng_indep",
-          label="Restrict to past observations?",
-          choices=list("No (Recommened)"=FALSE, "Yes"=TRUE)
-        ),
-        checkboxInput(
-          "rng_pb",
-          label="Include Powerball?",
-          value=FALSE
+        conditionalPanel(
+          "input.rng_mode == 'Lotto'",
+          checkboxInput(
+            "rng_pb",
+            label="Include Powerball?",
+            value=TRUE
+          )
         ),
         actionButton(
           "rng_button",
