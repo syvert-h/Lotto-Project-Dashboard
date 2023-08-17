@@ -63,11 +63,10 @@ function(input, output, session) {
       }
     } 
     else { # input$rng_method == "most.common"
-      nTimes = 1000 # 1000 > 100 in order for better convergence
       if (input$rng_model == "rng") {
-        preds = most_common_balls(nTimes=nTimes, nBalls=nBalls, df=NULL, pb=input$rng_pb, ll=NULL)
+        preds = most_common_balls(nTimes=input$rng_nTimes, nBalls=nBalls, df=NULL, pb=input$rng_pb, ll=NULL)
       } else { # bayes
-        preds = most_common_balls(nTimes=nTimes, nBalls=nBalls, df=current_df, pb=input$rng_pb, ll=input$rng_model)
+        preds = most_common_balls(nTimes=input$rng_nTimes, nBalls=nBalls, df=current_df, pb=input$rng_pb, ll=input$rng_model)
       }
     }
     ### Store predictions

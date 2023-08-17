@@ -2,8 +2,16 @@ library(shiny)
 library(plotly)
 
 navbarPage(
-  title="Lottery Analysis",
+  title="Lotto Analysis",
   id="navPage",
+  
+  tabPanel(
+    title="Analysis",
+    value="analysis", # acts as ID
+    # htmlOutput("analysis_md")
+    htmltools::tags$iframe(src="Lotto-Predictions-using-Bayes.html", width='100%', 
+                           height=1000,  style="border:none;")
+  ),
   
   tabPanel(
     title="Odds Information",
@@ -73,6 +81,16 @@ navbarPage(
           label="Prediction Method:",
           choices=list("Singular"="single", "Most Likely (Slower)"="most.common")
         ),
+        conditionalPanel(
+          "input.rng_method == 'most.common'",
+          numericInput(
+            'rng_nTimes',
+            label='How many resamples?',
+            value=1000,
+            min=1,
+            max=10000
+          )
+        ),
         radioButtons(
           "rng_model",
           label="Which model?",
@@ -112,13 +130,5 @@ navbarPage(
     title="Past Results",
     value="results",
     DT::dataTableOutput("results_table")
-  ),
-  
-  tabPanel(
-    title="Analysis",
-    value="analysis", # acts as ID
-    # htmlOutput("analysis_md")
-    htmltools::tags$iframe(src="Lotto-Predictions-using-Bayes.html", width='100%', 
-                           height=1000,  style="border:none;")
   )
 )
