@@ -1,23 +1,21 @@
 library(dplyr)
-library(googlesheets4)
+library(aws.s3)
 
-### Dataset from Google Sheets
-##### Run once -- setup non-interactive access to Google Sheets (https://stackoverflow.com/questions/63535190/connect-to-googlesheets-via-shiny-in-r-with-googlesheets4)
-# # Set authentication token to be stored in a folder called `.secrets`
-# options(gargle_oauth_cache = ".secrets")
-# # Authenticate manually
-# gs4_auth()
-# # If successful, the previous step stores a token file.
-# # Check that a file has been created with:
-# list.files(".secrets/")
-# # Check that the non-interactive authentication works by first deauthorizing:
-# gs4_deauth()
-##### #####
-sheets_url = scan("Sheets URL.txt", what="txt")
-email_auth = scan("Email.txt", what="txt")
-# Authenticate using token. If no browser opens, the authentication works.
-gs4_auth(cache=".secrets", email=email_auth)
-lotto = read_sheet(sheets_url)
+### Get file from AWS S3 bucket ###
+s3BucketName = scan("s3-bucket-name.txt", what="txt")
+readRenviron(".Renviron")
+Sys.setenv(
+  "AWS_ACCESS_KEY_ID"=Sys.getenv("AWS_ACCESS_KEY_ID"),
+  "AWS_SECRET_ACCESS_KEY"=Sys.getenv("AWS_SECRET_ACCESS_KEY"),
+  "AWS_DEFAULT_REGION"=Sys.getenv("AWS_DEFAULT_REGION")
+)
+lotto = s3read_using(
+  read.csv, 
+  object='lotto-results-clean.csv', 
+  bucket=s3BucketName
+  ) %>%
+  select(-1) %>% # ignore first column
+  rename("1"="X1", "2"="X2", "3"="X3", "4"="X4", "5"="X5", "6"="X6", "7"="X7")
 
 # Default predictions dataframe
 rng_df_default = data.frame("Mode"=character(0), "1"=integer(0),  "2"=integer(0), 
