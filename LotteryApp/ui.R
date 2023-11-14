@@ -1,5 +1,6 @@
 library(shiny)
 library(plotly)
+library(DT)
 
 navbarPage(
   title="Lotto Analysis",
@@ -18,37 +19,60 @@ navbarPage(
     value="odds", # acts as ID
     sidebarLayout(
       sidebarPanel(
-        width=3,
+        width=2,
         radioButtons(
-          "odds_radio",
-          label="Use all draws?",
-          choices=list("No (Recommended)"=FALSE, "Yes"=TRUE)
+          "odds_filters",
+          label="Dataset Options:",
+          choices=list(
+            "Exlude Outliers (Recommended)"=1,
+            "Bi-Weekly Draws"=2, 
+            "Smartplay Draws (Latest Machine)"=3,
+            "All Draws"=4
+          )
         ),
         selectInput(
           "odds_no",
           label="Choose a ball order:",
-          choices=c(1, 2, 3, 4, 5, 6, "Bonus"="7", "Powerball"="PB") # converts to character
+          choices=c(1, 2, 3, 4, 5, 6, "Powerball"="PB") # converts to character
         )
       ),
       
       mainPanel(
-        width=9,
+        width=10,
         fluidRow(
-          column(width=6,
+          column(width=7,
             plotlyOutput("odds_prob_bar")
           ),
-          column(width=6,
+          column(width=5,
             plotlyOutput("odds_line")
           )
         ),
         fluidRow(
           column(width=8,
-            fluidRow(plotlyOutput("odds_boxplot")),
-            fluidRow(DT::dataTableOutput("odds_summary_table"))
+            plotlyOutput("odds_wait_plot")
           ),
           column(width=4,
-            h4("Previous Results"),
-            DT::dataTableOutput("odds_df")
+            plotlyOutput("odds_even_plot")
+          )
+        ),
+        conditionalPanel(
+          condition="input.odds_no != 'PB'",
+          fluidRow(
+            column(width=4,
+                   h4("Initial Ball Row/Column Indices"),
+                   DT::dataTableOutput("odds_init_balls")
+            ),
+            column(width=4,
+                   plotlyOutput("odds_row_plot")
+            ),
+            column(width=4,
+                   plotlyOutput("odds_col_plot")
+            )
+          )
+        ),
+        fluidRow(
+          column(width=12,
+            plotlyOutput("odds_wed_sat")
           )
         )
       )
@@ -60,7 +84,7 @@ navbarPage(
     value="generator", # acts as ID
     sidebarLayout(
       sidebarPanel(
-        width=3,
+        width=2,
         numericInput(
           "rng_drawNo",
           label="Draw Number:",
@@ -72,9 +96,14 @@ navbarPage(
           choices=list("Strike", "Lotto")
         ),
         radioButtons(
-          "rng_filter",
-          label="Use all the data?",
-          choices=list("No (Recommended)"=FALSE, "Yes"=TRUE)
+          "rng_filters",
+          label="Dataset Options:",
+          choices=list(
+            "Exlude Outliers (Recommended)"=1,
+            "Bi-Weekly Draws"=2, 
+            "Smartplay Draws (Latest Machine)"=3,
+            "All Draws"=4
+          )
         ),
         radioButtons(
           "rng_method",
@@ -86,7 +115,7 @@ navbarPage(
           numericInput(
             'rng_nTimes',
             label='How many resamples?',
-            value=1000,
+            value=100,
             min=1,
             max=10000
           )
@@ -94,8 +123,9 @@ navbarPage(
         radioButtons(
           "rng_model",
           label="Which model?",
-          choices=list("Proportion (Bayes)"="prop", "Inverse Proportion (Bayes)"="invert.prop", 
-                       "Binomial (Bayes)"="binom", "Uniform (Random)"="rng")
+          choices=list("Proportion (Bayes)"="prop", "Reverse Proportion (Bayes)"="rev.prop", 
+                       "Binomial (Bayes)"="binom", "Uniform (Random)"="rng",
+                       "Exponential"="exp", "Reverse Exponential"="rev.exp")
         ),
         conditionalPanel(
           "input.rng_mode == 'Lotto'",
@@ -116,7 +146,7 @@ navbarPage(
       ),
       
       mainPanel(
-        width=9,
+        width=10,
         fluidRow(
           column(width=12,
             DT::dataTableOutput("rng_table")
