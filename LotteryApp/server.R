@@ -11,8 +11,8 @@ function(input, output, session) {
   # Update dataframe used by the model
   rng_df = reactive({
     req(input$rng_filters)
-    if (input$odds_filters == 1) {return(post600)} 
-    else if (input$odds_filters == 2) {return(biweekly)} 
+    if (input$rng_filters == 1) {return(post600)} 
+    else if (input$rng_filters == 2) {return(biweekly)} 
     else if (input$rng_filters == 3) {return(smartplay)} 
     else {return(lotto)} # i.e. input$rng_filters == 4
   })
@@ -113,10 +113,10 @@ function(input, output, session) {
   odds_df = reactive({
     req(input$odds_no)
     req(input$odds_filters)
-    temp = lotto
+    temp = lotto # i.e. input$odds_filters == 4
     if (input$odds_filters == 1) {temp = post600} 
     else if (input$odds_filters == 2) {temp = biweekly} 
-    else {temp = smartplay} # i.e. input$odds_filters == 3
+    else if (input$odds_filters == 3) {temp = smartplay}
     return(temp %>% select("Draw","Date",input$odds_no))
   })
   # Extract the column vector for graphs (common action)
