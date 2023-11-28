@@ -41,7 +41,7 @@ rng_df_default = data.frame("1"=integer(0),  "2"=integer(0), "3"=integer(0),
 
 ### Exponential Probabilities for All Datasets ###
 rev_exp_probs = function(ball_order_vec) { 
-  middle = median(ball_order_vec)
+  middle = mean(ball_order_vec)
   reverse = middle - (ball_order_vec - middle) # try middle as 1/10 (tbc)
   reverse = reverse + abs(min(reverse) - 1e-4) # shift up incase of negatives (plus some to avoid 0 probability)
   reverse/sum(reverse) # normalise
@@ -99,33 +99,33 @@ rev_exp_probs_smartplay_pb = lapply(exp_probs_smartplay_pb, rev_exp_probs)
 
 ### Exponential Predictions ###
 # Function to calculate Exponential probabilities
-rev_exp_probs = function(ball_order_vec) {
-  middle = median(ball_order_vec)
-  reverse = middle - (ball_order_vec - middle)
-  reverse = reverse + abs(min(reverse) - 1e-4) # shift up incase of negatives (plus some to avoid 0 probability)
-  reverse/sum(reverse) # normalise
-}
-exp_probs = function(df, nBalls, rev=F, pb=F) {
-  time_since_drawn = lapply(1:nBalls, function(idx){which(df[,idx] == num)}) # Get the times since ball drawn for each ball number
-  wait_times = lapply(time_since_drawn, diff) # Calculate the wait times (difference) between each draw for each ball number
-  latest_time_since_drawn = lapply(time_since_drawn, function(ball_order_times_lst){ball_order_times_lst[1]}) # get the latest wait times for each number in each ball order
-  wait_times_rates = lapply(wait_times, function(ball_order_lst) {
-    sapply(ball_order_lst, function(ball_num_lst){1/mean(ball_num_lst)})
-  }) # i.e. lambda's (average/constant rate of events) for each number in each ball order
-  probs = lapply(1:nBalls, function(ball_order) {
-    nBallNums = 40
-    if (pb == T) {nBallNums = 10}
-    ball_num_odds = sapply(1:nBallNums, function(ball_num) {
-      dexp(
-        x=latest_time_since_drawn[[ball_order]][ball_num],
-        rate=wait_times_rates[[ball_order]][ball_num]
-      )
-    })
-    ball_num_odds/sum(ball_num_odds) # make probability (0-1 normalise)
-  }) # for every ball number in every ball order, get their exponential probability of the latest/current wait times
-  if (rev == T) {probs = lapply(probs, rev_exp_probs)}
-  return(probs) # probs is a list - each list item is a ball order vector - each vector item is the exponential probability for the ball number (index)
-}
+# rev_exp_probs = function(ball_order_vec) {
+#   middle = median(ball_order_vec)
+#   reverse = middle - (ball_order_vec - middle)
+#   reverse = reverse + abs(min(reverse) - 1e-4) # shift up incase of negatives (plus some to avoid 0 probability)
+#   reverse/sum(reverse) # normalise
+# }
+# exp_probs = function(df, nBalls, rev=F, pb=F) {
+#   time_since_drawn = lapply(1:nBalls, function(idx){which(df[,idx] == num)}) # Get the times since ball drawn for each ball number
+#   wait_times = lapply(time_since_drawn, diff) # Calculate the wait times (difference) between each draw for each ball number
+#   latest_time_since_drawn = lapply(time_since_drawn, function(ball_order_times_lst){ball_order_times_lst[1]}) # get the latest wait times for each number in each ball order
+#   wait_times_rates = lapply(wait_times, function(ball_order_lst) {
+#     sapply(ball_order_lst, function(ball_num_lst){1/mean(ball_num_lst)})
+#   }) # i.e. lambda's (average/constant rate of events) for each number in each ball order
+#   probs = lapply(1:nBalls, function(ball_order) {
+#     nBallNums = 40
+#     if (pb == T) {nBallNums = 10}
+#     ball_num_odds = sapply(1:nBallNums, function(ball_num) {
+#       dexp(
+#         x=latest_time_since_drawn[[ball_order]][ball_num],
+#         rate=wait_times_rates[[ball_order]][ball_num]
+#       )
+#     })
+#     ball_num_odds/sum(ball_num_odds) # make probability (0-1 normalise)
+#   }) # for every ball number in every ball order, get their exponential probability of the latest/current wait times
+#   if (rev == T) {probs = lapply(probs, rev_exp_probs)}
+#   return(probs) # probs is a list - each list item is a ball order vector - each vector item is the exponential probability for the ball number (index)
+# }
 exp_preds = function(df_choice, model, nCols, pb) { # Generate one line of predictions
   # Preparation
   datasets = list( # Note: 1=post600, 2=biweekly, 3=smartplay, 4=all
@@ -201,21 +201,21 @@ rev_prop_bayes = function(props) { # takes vector of probs (for each number)
 bayes_line = function(df, nBalls, pb, ll) {
   preds_line = numeric(nBalls)
   prev = NULL
-  if (nBalls == 4) {
-    # Note: using for-loop since apply-loops cannot alter variables outside its scope/function
-    for (i in 1:nBalls) {
-      pred_num = general_bayes(cols=df[i], prev=prev, pb=pb, ll=ll)
-      preds_line[i] = pred_num
-      prev = preds_line[1:i]
-    }
-  } else { # Lotto or PB -- different from above since use all df and not specific column
-    for (i in 1:nBalls) {
-      # Note: Lotto pass whole dataframe since ordering does not matter
-      pred_num = general_bayes(cols=df, prev=prev, pb=pb, ll=ll)
-      preds_line[i] = pred_num
-      prev = preds_line[1:i]
-    }
+  # if (nBalls == 4) {
+  # Note: using for-loop since apply-loops cannot alter variables outside its scope/function
+  for (i in 1:nBalls) {
+    pred_num = general_bayes(cols=df[i], prev=prev, pb=pb, ll=ll)
+    preds_line[i] = pred_num
+    prev = preds_line[1:i]
   }
+  # } else { # Lotto or PB -- different from above since use all df and not specific column
+  #   for (i in 1:nBalls) {
+  #     # Note: Lotto pass whole dataframe since ordering does not matter
+  #     pred_num = general_bayes(cols=df, prev=prev, pb=pb, ll=ll)
+  #     preds_line[i] = pred_num
+  #     prev = preds_line[1:i]
+  #   }
+  # }
   return(preds_line)
 }
 
