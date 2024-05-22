@@ -10,7 +10,7 @@ navbarPage(
     title="Analysis",
     value="analysis", # acts as ID
     # htmlOutput("analysis_md")
-    htmltools::tags$iframe(src="Lotto-Predictions-using-Bayes.html", width='100%', 
+    htmltools::tags$iframe(src="Testing-Predictive-Accuracy.html", width='100%', 
                            height=1000,  style="border:none;")
   ),
   
@@ -21,13 +21,12 @@ navbarPage(
       sidebarPanel(
         width=2,
         radioButtons(
-          "odds_filters",
+          "odds_df_choice",
           label="Dataset Options:",
           choices=list(
-            "Exlude Outliers (Recommended)"=1,
-            "Bi-Weekly Draws"=2, 
-            "Smartplay Draws (Latest Machine)"=3,
-            "All Draws"=4
+            "All Draws"="Lotto",
+            "Bi-Weekly Draws"="Bi-Weekly", 
+            "Smartplay Draws (Latest Machine)"="Smartplay"
           )
         ),
         selectInput(
@@ -55,6 +54,11 @@ navbarPage(
             plotlyOutput("odds_even_plot")
           )
         ),
+        fluidRow(
+          column(width=12,
+                 plotlyOutput("odds_wed_sat")
+          )
+        ),
         conditionalPanel(
           condition="input.odds_no != 'PB'",
           fluidRow(
@@ -68,11 +72,6 @@ navbarPage(
             column(width=4,
                    plotlyOutput("odds_col_plot")
             )
-          )
-        ),
-        fluidRow(
-          column(width=12,
-            plotlyOutput("odds_wed_sat")
           )
         )
       )
@@ -93,51 +92,35 @@ navbarPage(
         radioButtons(
           "rng_mode",
           label="Which game mode?",
-          choices=list("Strike", "Lotto")
+          choices=c("Strike"=1, "Lotto"=2, "Powerball"=3)
         ),
         radioButtons(
-          "rng_filters",
+          "rng_df_choice",
           label="Dataset Options:",
           choices=list(
-            "Exlude Outliers (Recommended)"=1,
-            "Bi-Weekly Draws"=2, 
-            "Smartplay Draws (Latest Machine)"=3,
-            "All Draws"=4
+            "All Draws"="Lotto",
+            "Bi-Weekly Draws"="Bi-Weekly", 
+            "Smartplay Draws (Latest Machine)"="Smartplay"
           )
         ),
-        radioButtons(
-          "rng_method",
-          label="Prediction Method:",
-          choices=list("Singular"="single", "Most Likely (Slower)"="most.common")
-        ),
-        conditionalPanel(
-          "input.rng_method == 'most.common'",
-          numericInput(
+        numericInput(
             'rng_nTimes',
-            label='How many resamples?',
+            label='How many resamples for one line?',
             value=100,
             min=1,
             max=10000
-          )
         ),
         radioButtons(
           "rng_model",
           label="Which model?",
           choices=list("Proportion (Bayes)"="prop", "Reverse Proportion (Bayes)"="rev.prop", 
                        "Binomial (Bayes)"="binom", "Uniform (Random)"="rng",
-                       "Exponential"="exp", "Reverse Exponential"="rev.exp")
-        ),
-        conditionalPanel(
-          "input.rng_mode == 'Lotto'",
-          checkboxInput(
-            "rng_pb",
-            label="Include Powerball?",
-            value=TRUE
-          )
+                       "Exponential"="exp", "Reverse Exponential"="rev.exp",
+                       "Poisson"="pois", "Reverse Poisson"="rev.pois")
         ),
         actionButton(
           "rng_button",
-          label="Get Line"
+          label="Generate Line"
         ),
         actionButton(
           "rng_reset",

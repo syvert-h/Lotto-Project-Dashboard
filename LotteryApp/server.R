@@ -10,11 +10,8 @@ function(input, output, session) {
   ### NUMBER GENERATOR PAGE ###
   # Update dataframe used by the model
   rng_df = reactive({
-    req(input$rng_filters)
-    if (input$rng_filters == 1) {return(post600)} 
-    else if (input$rng_filters == 2) {return(biweekly)} 
-    else if (input$rng_filters == 3) {return(smartplay)} 
-    else {return(lotto)} # i.e. input$rng_filters == 4
+    req(input$rng_df_choice)
+    return( datasets[[input$rng_df_choice]] ) # returns dataframe
   })
   # Update draw number numericInput
   observeEvent(input$navPage, {
@@ -35,58 +32,25 @@ function(input, output, session) {
   
   # Fill dataframe with predictions
   observeEvent(input$rng_button, {
-    line = character(11)
+    line = character(12)
     ### Select relevant columns before predictions
-    nCols = 4
-    current_df = rng_df() %>% filter(`Draw` < input$rng_drawNo)
-    if (input$rng_mode == 'Strike') {
-      current_df = current_df %>% select(3:6)
-    } else { # input$rng_mode == 'Lotto'
-      nCols = 6
-      current_df = current_df %>% select(c(3:8, 10))
-    }
+    nBalls = c(4, 6, 7)[as.integer(input$rng_mode)] # Note: Strike=1, Lotto=2, PB=3
+    cols_idx = list(3:6, 3:8, c(3:8, 10))[[as.integer(input$rng_mode)]]
+    train_df = rng_df() %>%  filter(`Draw` < input$rng_drawNo) %>% select(all_of(cols_idx))
     ### Make predictions
-    preds = NULL
-    if (input$rng_method == "single") {
-      if (input$rng_model == "rng") { # Uniform/Random Model
-        preds = sample(1:40, size=nCols)
-        if (input$rng_pb == T & input$rng_mode == 'Lotto') {preds = c(preds, sample(1:10, size=1))}
-      } else if (input$rng_model %in% c("exp","rev.exp")) { # Exponential Model
-        if (input$rng_pb == T & input$rng_mode == 'Lotto') {
-          preds = exp_preds(df_choice=input$rng_filters, model=input$rng_model, nCols=nCols, pb=T)
-        } else {
-          preds = exp_preds(df_choice=input$rng_filters, model=input$rng_model, nCols=nCols, pb=F)
-        }
-      } else { # Bayes Model
-        temp_df = current_df[,!(names(current_df) == "PB")] # remove PB column for Bayes preds
-        preds = bayes_line(df=temp_df, nBalls=nCols, pb=F, ll=input$rng_model)
-        if (input$rng_pb == T & input$rng_mode == 'Lotto') {
-          pb_pred = bayes_line(df=current_df['PB'], nBalls=1, pb=T, ll=input$rng_model)
-          preds = c(preds, pb_pred)
-        }
-      }
-    } 
-    else { # input$rng_method == "most.common"
-      if (input$rng_model == "rng") {
-        preds = most_common_balls(nTimes=input$rng_nTimes, nBalls=nCols, df=NULL, pb=input$rng_pb, ll=NULL, model=input$rng_model)
-      } else if (input$rng_model %in% c("exp","rev.exp")) {
-        preds = most_common_balls(nTimes=input$rng_nTimes, nBalls=nCols, df=NULL, pb=input$rng_pb, ll=NULL, model=input$rng_model, df_choice=input$rng_filters)
-      } else { # bayes
-        preds = most_common_balls(nTimes=input$rng_nTimes, nBalls=nCols, df=current_df, pb=input$rng_pb, ll=input$rng_model, model=input$rng_model)
-      }
-    }
+    preds = get_pred_line(train_df, nBalls, input$rng_nTimes, input$rng_model)
     ### Store predictions
-    for (i in 1:nCols) {line[i] = preds[i]} # store predictions
-    if (input$rng_pb == T) {line[7] = preds[7]}
+    for (i in 1:nBalls) {line[i] = preds[i]} # store predictions
     ### Store process information
-    line[8] = input$rng_mode
+    line[8] = c("Strike","Lotto","Powerball")[as.integer(input$rng_mode)]
     convert_model = c("prop"="Proportion (Bayes)", "rev.prop"="Reverse Proportion (Bayes)", 
                       "binom"="Binomial (Bayes)", "rng"="Uniform (Random)",
-                      "exp"="Exponential", "rev.exp"="Reverse Exponential")
-    convert_method = c("most.common"="Most Common", "single"="Singular")
+                      "exp"="Exponential", "rev.exp"="Reverse Exponential",
+                      "pois"="Poisson", "rev.pois"="Reverse Poisson")
     line[9] = convert_model[input$rng_model]
-    line[10] = convert_method[input$rng_method]
-    line[11] = c("Exclude", "Bi-Weekly", "Smartplay", "All")[as.integer(input$rng_filters)]
+    line[10] = input$rng_df_choice
+    line[11] = input$rng_nTimes
+    line[12] = input$rng_drawNo
     ### Update predictions dataframe with new row
     before = rng_preds_df()
     before[nrow(before)+1,] = line
@@ -112,11 +76,8 @@ function(input, output, session) {
   # Update the dataframe used for graphs
   odds_df = reactive({
     req(input$odds_no)
-    req(input$odds_filters)
-    temp = lotto # i.e. input$odds_filters == 4
-    if (input$odds_filters == 1) {temp = post600} 
-    else if (input$odds_filters == 2) {temp = biweekly} 
-    else if (input$odds_filters == 3) {temp = smartplay}
+    req(input$odds_df_choice)
+    temp = datasets[[input$odds_df_choice]]
     return(temp %>% select("Draw","Date",input$odds_no))
   })
   # Extract the column vector for graphs (common action)
@@ -284,6 +245,15 @@ function(input, output, session) {
     return(init_tbl)
   })
   # plot of wed vs sat line plot of ball number probabilities
+  vline <- function(x=0) {
+    list(
+      type = "line",
+      y0 = 0, y1 = 1,
+      yref = "paper",
+      x0 = x-1, x1 = x-1,
+      line = list(color = 'black', dash="dot")
+    )
+  }
   output$odds_wed_sat = renderPlotly({
     # get separate (wed/sat) dataframes
     temp_df = odds_df() %>%
@@ -306,6 +276,9 @@ function(input, output, session) {
     wed_df = get_probs_df(wed_df, "Wednesday")
     sat_df = get_probs_df(sat_df, "Saturday")
     all_df = bind_rows(wed_df, sat_df)
+    line_shapes = lapply(rng_generated_nums(), vline) # lines
+    line_shapes = append(line_shapes, list(hline(input$odds_no))) # join list of shapes
+    print(line_shapes)
     # create plot
     all_df %>%
       plot_ly(x=~`Number`, y=~`Probability`, color=~`DoW`, type="scatter",
@@ -313,7 +286,7 @@ function(input, output, session) {
               mode="lines+markers") %>%
       layout(
         title="Probability per Day Drawn",
-        shapes=list(hline(input$odds_no)),
+        shapes=line_shapes,
         hovermode="x unified"
       )
   })
