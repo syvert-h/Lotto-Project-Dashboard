@@ -15,20 +15,22 @@ lotto = s3read_using(
   bucket=s3BucketName
   ) %>%
   select(-1) %>% # ignore first column (row index)
-  rename("1"="X1", "2"="X2", "3"="X3", "4"="X4", "5"="X5", "6"="X6", "7"="X7") %>%
-  filter(!is.na(`PB`))
+  rename("1"="X1", "2"="X2", "3"="X3", "4"="X4", "5"="X5", "6"="X6", "7"="X7")
 # # Temporary - local purposes only:
 # lotto = read.csv("./data/lotto_clean.csv", check.names=F)
 ### ###
 
 ### Dataset Options ###
+lotto_clean = lotto %>% filter((`Draw` >= 575) | (`Draw` <= 275)) # ignore outliers
 biweekly = lotto %>% filter(`Draw` >= 1479) # first time bi-weekly draws
 smartplay = lotto %>%
   filter(`Date` >= "2018-05-30") %>% # first implemented
   filter(!(`Date` >= "2019-10-22" & `Date` <= "2019-10-29")) %>% # fire event
   filter(!(`Date` >= "2020-03-25" & `Date` <= "2019-04-27")) # L4 lockdown
+
 datasets = list( 
   "Lotto" = lotto,
+  "Lotto-Clean" = lotto_clean,
   "Bi-Weekly" = biweekly,
   "Smartplay" = smartplay
 )
@@ -47,11 +49,13 @@ rng_df_default = data.frame("1"=integer(0),  "2"=integer(0), "3"=integer(0),
 ## MAIN CONTROL FOR GENERATING PREDICTIONS **********************
 get_pred_line = function(df, nBalls, nTimes, model) {
   if (model %in% c('prop', 'rev.prop', 'binom')) {
-    return( get_bayes_pred_line(df, nBalls, nTimes, model) )
+    return( get_bayes_pred_line(df, nTimes, model) )
   } else if (model %in% c('exp', 'rev.exp')) {
     return( get_exp_pred_line(df, nBalls, nTimes, model) )
   } else if (model %in% c('pois', 'rev.pois')) {
-    get_pois_pred_line(df, nBalls, nTimes, model)
+    return( get_pois_pred_line(df, nBalls, nTimes, model) )
+  } else if (model %in% c('kde', 'rev.kde')) {
+    return( get_density_pred_line(df, nBalls, nTimes, model) )
   } else { # random model
     return( get_rand_pred_line(nBalls, nTimes) )
   }
@@ -82,6 +86,82 @@ get_rand_pred_line = function(nBalls, nTimes) {
     return(c(rand_pred_line, pb_pred))
   }
   return(rand_pred_line)
+}
+
+## KERNEL DENSITY ESITMATION PREDICTIONS (KDE) ##
+get_density_pred_line = function(df, nBalls, nTimes, model) {
+  # Generate Poisson Probabilities
+  probs_lst = generate_density_probs(df, model) # list of probs. for every ball number in every ball order
+  # Resample One Poisson Line nTimes Using Generated Probabilities
+  pred_line = replicate(nTimes, {get_density_line(probs_lst)}) %>% t() %>% # matrix of predicted numbers
+    get_most_common_line()
+  return(pred_line) # returns a vector (one line of bayesian prediction)
+}
+# Generate Poisson Prediction Line
+get_density_line = function(probs_lst) {
+  N = length(probs_lst)
+  maxBalls = c(rep(40,6), 10)
+  balls = numeric(N)
+  for (i in 1:N) { # using for-loop because have incrementally update
+    ball_order_probs = probs_lst[[i]]
+    if (i < 7) {ball_order_probs[balls] = 0} # ignore already chosen balls
+    balls[i] = sample(1:maxBalls[i], size=1, prob=ball_order_probs)
+  }
+  return(balls)
+}
+generate_density_probs = function(df, model) {
+  # Setup
+  N = ncol(df) # 4, 6, or 7
+  maxBalls = c(rep(40,6), 10)
+  # Extract times since last drawn for each ball number in each ball order
+  times_since_drawn = lapply(1:N, get_times_since_drawn, df, maxBalls)
+  # Extract latest times since last drawn for each ball number in each ball order
+  latest_times_since_drawn = lapply(times_since_drawn, function(lst){
+    sapply(lst, function(vec){vec[1]}) # first element from each ball number
+  })
+  # Extract the wait time between draws for each ball number in each ball order
+  wait_times = lapply(times_since_drawn, get_wait_times)
+  # 
+  density_probs = lapply(1:N, function(ball_order) {
+    ball_num_odds = sapply(1:maxBalls[ball_order], function(ball_num){
+      current_wait_time = latest_times_since_drawn[[ball_order]][ball_num]
+      density_fit = density(wait_times[[ball_order]][ball_num][[1]])
+      density_pred = max(approx(x=density_fit$x, y=density_fit$y, xout=current_wait_time)$y, 0, na.rm=T)
+      density_pred
+    })
+    ball_num_odds # don't need to standardise -- sample() will handle it
+  })
+  if (model == 'rev.pois') {density_probs = lapply(density_probs, function(x){1 - x})}
+  return(density_probs)
+}
+## Generate one line of Density predictions
+density_one_line = function(probs_lst) {
+  N = length(probs_lst)
+  maxBalls = c(rep(40,6), 10)
+  balls = numeric(N)
+  for (i in 1:N) { # using for-loop because have incrementally update
+    ball_order_probs = probs_lst[[i]]
+    if (i < 7) {ball_order_probs[balls] = 0} # ignore already chosen balls
+    balls[i] = sample(1:maxBalls[i], size=1, prob=ball_order_probs)
+  }
+  return(balls)
+}
+##### MAIN NUMBER GENERATING PROCESS FOR DENSITY FUNCTION #####
+get_density_preds = function(df, strike, pb, nLines, nTimes=1) {
+  # Generate density Probabilities Per Ball Number Per Ball Order
+  probs = generate_density_probs(df)
+  density_probs = probs$`density_probs`
+  rev_density_probs = probs$`rev_density_probs`
+  # Generate Predictions (NOTE: Replicating here to avoid recalculating probabilities)
+  density_preds = replicate(nLines, {density_one_line_resample(nTimes, density_probs)}) %>%
+    t() %>% as_tibble() %>% mutate(`Model`='Density', `nTimes`=nTimes)
+  rev_density_preds = replicate(nLines, {density_one_line_resample(nTimes, rev_density_probs)}) %>%
+    t() %>% as_tibble() %>% mutate(`Model`='Reverse Density', `nTimes`=nTimes)
+  return(rbind(density_preds, rev_density_preds))
+}
+density_one_line_resample = function(nTimes, probs) {
+  replicate(nTimes, {density_one_line(probs)}) %>% t() %>% # matrix of sampled nums
+    get_most_common_line() # get most common nums as ONE LINE PREDICTION (vector)
 }
 
 ## POISSON MODEL PREDICTIONS ##
@@ -219,34 +299,44 @@ get_reverse_probs = function(ball_order_vec) {
 }
 
 ## BAYESIAN MODEL PREDICTIONS ##
-get_bayes_pred_line = function(df, nBalls, nTimes, model) {
+get_bayes_pred_line = function(df, nTimes, model) {
+  # Generate Counts (Evidence) ONCE HERE!!!
+  ball_order_counts = lapply(df, table)
+  ball_order_props = lapply(ball_order_counts, prop.table) # list of prop.tables() for each ball order (from the given df)
+  ball_order_evidence = list(
+    'counts' = ball_order_counts,
+    'props' = ball_order_props
+  )
   # Resample One Bayes Line nTimes
-  pred_line = replicate(nTimes, {get_bayes_line(df, nBalls, model)}) %>% t() %>% # matrix of predicted numbers
+  pred_line = replicate(nTimes, {get_bayes_line(ball_order_evidence, model)}) %>% t() %>% # matrix of predicted numbers
     get_most_common_line()
-  return(pred_line) # returns a vector (one line of bayesian prediction)
+  return(pred_line)
 }
-get_bayes_line = function(df, nBalls, model) {
+get_bayes_line = function(evidence_lst, ll) {
+  counts = evidence_lst$`counts`
+  props = evidence_lst$`props`
+  evidence = props
+  if (ll == 'binom') {evidence = counts}
+  nBalls = length(evidence)
   maxBalls = c(rep(40,6), 10)
+  priors = c(1/40:35, 1/10)
+  
   preds = numeric(nBalls)
   for (i in 1:nBalls) { # Note: using for-loop since apply-loops cannot alter variables outside its scope/function
-    preds[i] = general_bayes(nums_drawn=df[i], maxBall=maxBalls[i], ll=model, balls_drawn=preds[1:i], idx=i)
+    ball_order_evidence = evidence[[i]]
+    if (i <= 6) {
+      ball_order_evidence[as.character(preds[preds != 0])] = 0 # ignore drawn balls (only for non-powerball columns)
+    }
+    preds[i] = general_bayes(evidence=ball_order_evidence, maxBall=maxBalls[i], ll=ll, prior=priors[i])
   }
-  return(preds) # returns one line of bayesian predictions
+  return(preds)
 }
-general_bayes = function(nums_drawn, maxBall, ll, balls_drawn, idx) { # nums_drawn either df (lotto) or column vector (strike)
-  ### Evidence ###
-  prior = ifelse(idx == 7, 1/10, 1/(41-idx))
-  nums = do.call(c, nums_drawn) # convert into one vector
-  counts = table(nums)
-  if (idx > 1 & idx < 7) {counts[as.character(balls_drawn[-idx])] = 0} # remove already drawn balls
-  props = prop.table(counts)
+general_bayes = function(evidence, maxBall, ll, prior) { # nums_drawn either df (lotto) or column vector (strike)
   ### Likelihood ###
-  N = sum(counts) # number of trials
-  k = counts # number of successes (being drawn) for each ball number
   likelihoods = list(
-    "prop" = props,
-    "rev.prop" = (1-props)/sum((1-props)),
-    "binom" = dbinom(x=k, size=N, prob=prior)
+    "prop" = evidence,
+    "rev.prop" = (1-evidence)/sum((1-evidence)),
+    "binom" = get_binom_likelihood(evidence, ll, prior)
   )
   likelihood = likelihoods[[ll]]
   ### Posterior ###
@@ -254,4 +344,12 @@ general_bayes = function(nums_drawn, maxBall, ll, balls_drawn, idx) { # nums_dra
   posterior = prob_h_given_e / sum(prob_h_given_e)
   ### Predictions ###
   return(sample(1:maxBall, size=1, prob=posterior)) # returns 1 ball
+}
+get_binom_likelihood = function(evidence, ll, prior) { # PURELY TO AVOID WARNING()!
+  if (ll != 'binom') {return()}
+  else {
+    return(
+      dbinom(x=evidence, size=sum(evidence), prob=prior) # N := number of trials (sum(evidence)); k := number of successes (being drawn) (evidence)
+    )
+  }
 }

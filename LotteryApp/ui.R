@@ -7,14 +7,6 @@ navbarPage(
   id="navPage",
   
   tabPanel(
-    title="Analysis",
-    value="analysis", # acts as ID
-    # htmlOutput("analysis_md")
-    htmltools::tags$iframe(src="Testing-Predictive-Accuracy.html", width='100%', 
-                           height=1000,  style="border:none;")
-  ),
-  
-  tabPanel(
     title="Odds Information",
     value="odds", # acts as ID
     sidebarLayout(
@@ -25,6 +17,7 @@ navbarPage(
           label="Dataset Options:",
           choices=list(
             "All Draws"="Lotto",
+            "Cleaned Draws"="Lotto-Clean",
             "Bi-Weekly Draws"="Bi-Weekly", 
             "Smartplay Draws (Latest Machine)"="Smartplay"
           )
@@ -99,6 +92,7 @@ navbarPage(
           label="Dataset Options:",
           choices=list(
             "All Draws"="Lotto",
+            "Cleaned Draws"="Lotto-Clean",
             "Bi-Weekly Draws"="Bi-Weekly", 
             "Smartplay Draws (Latest Machine)"="Smartplay"
           )
@@ -116,7 +110,8 @@ navbarPage(
           choices=list("Proportion (Bayes)"="prop", "Reverse Proportion (Bayes)"="rev.prop", 
                        "Binomial (Bayes)"="binom", "Uniform (Random)"="rng",
                        "Exponential"="exp", "Reverse Exponential"="rev.exp",
-                       "Poisson"="pois", "Reverse Poisson"="rev.pois")
+                       "Poisson"="pois", "Reverse Poisson"="rev.pois",
+                       "Density (KDE)"="kde", "Reverse Density"="rev.kde")
         ),
         actionButton(
           "rng_button",
@@ -137,6 +132,14 @@ navbarPage(
         )
       )
     )
+  ),
+  
+  tabPanel(
+    title="Analysis",
+    value="analysis", # acts as ID
+    # htmlOutput("analysis_md")
+    htmltools::tags$iframe(src="Testing-Predictive-Accuracy.html", width='100%', 
+                           height=1000,  style="border:none;")
   ),
   
   tabPanel(

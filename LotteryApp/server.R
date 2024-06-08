@@ -46,7 +46,8 @@ function(input, output, session) {
     convert_model = c("prop"="Proportion (Bayes)", "rev.prop"="Reverse Proportion (Bayes)", 
                       "binom"="Binomial (Bayes)", "rng"="Uniform (Random)",
                       "exp"="Exponential", "rev.exp"="Reverse Exponential",
-                      "pois"="Poisson", "rev.pois"="Reverse Poisson")
+                      "pois"="Poisson", "rev.pois"="Reverse Poisson",
+                      "kde"="Density (KDE)", "rev.kde"="Reverse Density")
     line[9] = convert_model[input$rng_model]
     line[10] = input$rng_df_choice
     line[11] = input$rng_nTimes
