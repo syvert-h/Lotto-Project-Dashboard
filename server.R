@@ -63,9 +63,9 @@ function(input, output, session) {
       options=list(
         bFilter=F, # hide search bar
         lengthChange = F, # hide 'show entries' dropdown above
-        scrollY = 310,    # set vertical scrolling height in pixels
-        paging = F,    # disable pagination
-        info = FALSE,  # hides "Showing entries..." information text below
+        scrollY = 310, # set vertical scrolling height in pixels
+        paging = F, # disable pagination
+        info = FALSE, # hides "Showing entries..." information text below
         columnDefs = list(list(className='dt-left', targets="_all")) # left-align all columns
       ), 
       rownames=F) %>%

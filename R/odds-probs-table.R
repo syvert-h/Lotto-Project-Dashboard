@@ -37,7 +37,6 @@ get_model_probs_rank = function(model, ball_order_vec, p, ball_num) {
     "Multinomial" = get_multinom_probs(ball_order_vec, p)
   )
   model_probs = models[[model]]
-  # Get Probability Rank
   prob_ranks = rank(model_probs, ties.method='first') # Ranks tied values by their first appearance; higher probs. closer to rank 40; lower probs. closer to 1
   # Return Probability + Rank
   ball_num = as.integer(ball_num) # in-case

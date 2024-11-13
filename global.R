@@ -21,9 +21,9 @@ lotto = s3read_using(
   mutate(`Date`=as.Date(`Date`, format="%Y-%m-%d"))
 
 ### Dataset Options
-lotto_clean = lotto %>% filter(`Draw` >= 575) # ignore outliers - NEW CHANGE
+lotto_clean = lotto %>% filter(`Draw` >= 575) # ignore outliers
 biweekly = lotto %>% filter(`Draw` >= 1479) # first time bi-weekly draws
-smartplay = lotto %>% filter(`Date` >= "2018-05-30") # first implemented - NEW CHANGE
+smartplay = lotto %>% filter(`Date` >= "2018-05-30") # machine first implemented
 datasets = list(
   'Lotto' = lotto,
   'Lotto-Clean' = lotto_clean,

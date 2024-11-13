@@ -1,4 +1,4 @@
-#
+# Create Line Plot Trend of Ball Number Probabilities on Wednesday vs Saturday
 create_wed_sat_plot = function(df_choice, ball_order, selected_nums) {
   # Setup DataFrame
   df = datasets[[df_choice]]

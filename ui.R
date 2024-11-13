@@ -6,7 +6,7 @@ navbarPage(
   title="Lotto Project",
   id="navPage",
   
-  tabPanel(# WEIRD GLITCH -- DataTable breaks if not loaded before 'Analysis Page'; Hence placed first!
+  tabPanel( # WEIRD GLITCH -- DataTable breaks if not loaded before 'Analysis Page'; Hence placed first!
     title="Analysis",
     value="analysis", # acts as ID
     htmlOutput("analysis_html")

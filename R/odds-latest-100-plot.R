@@ -1,4 +1,4 @@
-# Create Line Plot of Latest 100 Draws
+# Create Line Plot of Latest 100 Draws + Distribution Boxplot
 create_latest_100_line = function(df, ball_order, selected_nums) {
   # Setup
   nBalls = ifelse(ball_order == "PB", 10, 40)

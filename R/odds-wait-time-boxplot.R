@@ -1,4 +1,4 @@
-#
+# Create Wait-Time Boxplots for current Dataset+Ball Order
 create_wait_time_boxplot = function(wait_times, current_wait_times, selected_nums) {
   # Setup
   nBalls = length(wait_times)

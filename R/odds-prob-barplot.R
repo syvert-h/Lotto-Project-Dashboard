@@ -1,4 +1,4 @@
-# Output Probability Per Ball Number (Barplot)
+# Output Barplot of Probability Per Ball Number
 create_probs_barplot = function(ball_order_probs_df, ball_order, selected_nums) {
   # setup
   nBalls = ifelse(ball_order == "PB", 10, 40)
